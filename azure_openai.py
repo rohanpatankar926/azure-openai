@@ -1,6 +1,7 @@
 import streamlit as st
 from langchain.chat_models import AzureChatOpenAI
 from langchain.schema import HumanMessage, AIMessage
+import os
 
 model = AzureChatOpenAI(
     openai_api_base="https://enterpriseml.openai.azure.com/",

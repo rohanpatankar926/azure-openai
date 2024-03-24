@@ -1,0 +1,72 @@
+name: Build and Push to Azure Container Registry
+
+on:
+  push:
+    branches:
+      - main
+
+
+env:
+  #change the name of the all the env variables
+  AZURE_CONTAINER_REGISTRY: azureopenaicontainer
+  PROJECT_NAME: openai-azure
+  RESOURCE_GROUP: ml-backend
+  REGISTRY_URL: mlbackendservice.azurecr.io
+  CLUSTER_NAME: assign-the-unique-name
+
+
+jobs:
+    continuous-integration:
+        runs-on: ubuntu-latest
+        steps:
+        - name: 'Checkout GitHub Action'
+          uses: actions/checkout@main
+
+        - name: 'Login via Azure CLI'
+          uses: azure/login@v1
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+        - name: azure docker login
+          run: |
+              docker login ${{ env.REGISTRY_URL }} --username ${{ env.AZURE_CONTAINER_REGISTRY }} --password ${{ secrets.REGISTRY_PASSWORD }}
+              docker build -t ${{ env.REGISTRY_URL }}/${{ env.PROJECT_NAME }}:${{ github.sha }} .
+              docker push ${{ env.REGISTRY_URL }}/${{ env.PROJECT_NAME }}:${{ github.sha }}
+        # - uses: docker/setup-buildx-action@v3
+        # - uses: docker/build-push-action@v5
+        #   with:
+        #     context: .
+        #     push: true
+        #     tags: ${{ env.REGISTRY_URL }}/${{ env.PROJECT_NAME }}:${{ github.sha }}
+            # cache-from: type=gha
+            # cache-to: type=gha,mode=max
+  
+    continuous-deployment:
+      needs: continuous-integration
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+        - name: Azure login
+          id: login
+          uses: azure/login@v1.4.3
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}
+        - name: Set AKS context
+          id: set-context
+          uses: azure/aks-set-context@v3
+          with:
+            resource-group: '${{ env.RESOURCE_GROUP }}' 
+            cluster-name: '${{ env.CLUSTER_NAME }}'
+        - name: Setup kubectl
+          id: install-kubectl
+          uses: azure/setup-kubectl@v3
+        - name: Deploy to AKS
+          id: deploy-aks
+          uses: Azure/k8s-deploy@v4
+          with:
+            namespace: 'azure-ml'
+            manifests: |
+              ./k8s/manifest.yml
+            images: ${{ env.REGISTRY_URL }}/${{ env.PROJECT_NAME }}:${{ github.sha }}
+            pull-images: false
